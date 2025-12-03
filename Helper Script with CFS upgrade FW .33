@@ -1,0 +1,34 @@
+This is from Discussion post found here: https://github.com/Guilouz/Creality-Helper-Script-Wiki/discussions/787#discussioncomment-12924972
+
+
+
+I maybe found a way to install the Creality Helper Script on 2.3.5.33. Can someone try it? It worked for me after a factory reset.
+
+SSH into the machine.
+
+Install Entware:
+wget http://bin.entware.net/mipselsf-k3.4/installer/generic.sh -O - | sh
+
+Add Entware to your path
+export PATH=/opt/bin:/opt/sbin:$PATH
+
+Start entware on boot (not sure here)
+echo '/opt/etc/init.d/rc.unslung start' >> /etc/rc.local; echo 'exit 0' >> /etc/rc.local
+
+Update and install Git:
+
+opkg update
+opkg install git-http
+opkg install git  # (Optional, if git is missing)
+
+Clone the script:
+git clone --depth 1 https://github.com/Guilouz/Creality-Helper-Script.git /usr/data/helper-script
+
+"fix" the invalid repo error:
+
+mv /usr/bin/git /usr/bin/git.bak
+ln -s /opt/bin/git /usr/bin/git
+git config --global --add safe.directory /usr/data/moonraker/moonraker
+
+Run the script:
+sh /usr/data/helper-script/helper.sh
