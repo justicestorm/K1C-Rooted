@@ -1,0 +1,63 @@
+Complete guide for upgrading a K1 SE to K1C
+
+K1 SE to K1C steps
+First install the two extra fans and thermistor.
+Rear exhaust 60x20mm 24v, 2 pin 2.5 mm JST XH-Style
+Bed blower (SOC) fan 120x32mm 24v, 2pin
+List of supported thermistors https://www.klipper3d.org/Config_Reference.html#common-thermistors
+
+Motherboard Pin diagram: https://guilouz.github.io/Creality-Helper-Script-Wiki/others/boards-layout-k1/
+
+Install K1C config files
+cp /usr/share/klipper/config/K1C_CR4CU220812S12/* /usr/data/printer_data/config/
+
+Update printer.cfg AND factory_printer.cfg with the correct Thermistor type. I used an NTC.
+Options include "EPCOS 100K B57560G104F", "ATC Semitec 104GT-2", "ATC Semitec 104NT-4-R025H42G", "Generic 3950", "Honeywell 100K 135-104LAG-J01", "NTC 100K MGB18-104F39050L32", "SliceEngineering 450", or "TDK NTCG104LH104JT1"
+
+Update the sn_mac partition
+
+SSH into the printer (requires root)
+
+/usr/bin/get_sn_mac.sh model
+Received value "K1 SE"
+
+Read the partition number containing the info of the model:
+fdisk -l | grep 'sn_mac' | awk '{print $1}'
+Value received "2"
+
+Read the size of the disk (change the 2 with the partition number previously read):
+
+#> fdisk -l /dev/mmcblk0p2
+
+Disk /dev/mmcblk0p2: 1 MB, 1048576 bytes, 2048 sectors
+32 cylinders, 4 heads, 16 sectors/track
+Units: sectors of 1 * 512 = 512 bytes
+
+Disk /dev/mmcblk0p2 doesn't contain a valid partition table
+Size of the partition "1048576 bytes" is what we are looking for. If your printer is different substitute the different number in the commands below.
+
+Make a backup file of the partition (change the partition number 2 if your printer is different):
+dd if=/dev/mmcblk0p2 of=/usr/data/sn_mac_backup.bin
+
+Generate the new sn_mac partition file. Make sure to update the truncate line if the partition is a size other than "1048576"
+
+printf -- "$(cat /usr/data/sn_mac_backup.bin | sed 's/K1 SE/K1C/')" > /usr/data/sn_mac_k1c.bin
+truncate -s 1048576  /usr/data/sn_mac_k1c.bin
+Double check file has correct content and is the right size (1048576):
+
+xxd -l 128 /usr/data/sn_mac_backup.bin 
+xxd -l 128 /usr/data/sn_mac_k1c.bin 
+ls -la /usr/data/sn_mac_k1c.bin 
+Write the new file to the partition. VERY IMPORTANT to double check you are using the right partition number! (mmcblk0p2 in the example)
+
+dd if=/usr/data/sn_mac_k1c.bin of=/dev/mmcblk0p2 bs=512 count=1
+/usr/bin/get_sn_mac.sh model
+Received value "K1C"
+
+Update the JSON files
+sed -i 's/1011/1007/' /usr/data/creality/userdata/config/system_config.json
+sed -i 's/K1 SE/K1C/' /usr/data/creality/userdata/config/system_config.json
+
+Reboot
+
+Print side panels and other parts to complete the upgrade - https://www.printables.com/@TomTheGeek/collections/2365064
