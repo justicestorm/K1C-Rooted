@@ -1,0 +1,195 @@
+Custom Macros
+
+[gcode_macro CHECK_FILAMENT_AT_START]
+gcode:
+  {% if printer['filament_switch_sensor filament_sensor_2'].filament_detected == False %}
+    { action_respond_info("Kein Filament erkannt! Druck wird pausiert.") }
+    PAUSE
+  {% endif %}
+#
+
+[gcode_macro BOX_LOAD_FROM_CFS]
+gcode:
+  {% if params.SLOT is defined %}
+    T{params.SLOT|int}
+    G90
+    M117 Lade Filament aus Slot {params.SLOT} ...
+    BOX_LOAD_MATERIAL_WITH_MATERIAL
+  {% else %}
+    {action_respond_info("⚠️ Bitte Parameter SLOT=0–3 angeben")}
+  {% endif %}
+#
+
+[gcode_macro LOAD_CFS_1]
+gcode:
+  BOX_LOAD_FROM_CFS SLOT=0
+
+[gcode_macro LOAD_CFS_2]
+gcode:
+  BOX_LOAD_FROM_CFS SLOT=1
+
+[gcode_macro LOAD_CFS_3]
+gcode:
+  BOX_LOAD_FROM_CFS SLOT=2
+
+[gcode_macro LOAD_CFS_4]
+gcode:
+  BOX_LOAD_FROM_CFS SLOT=3
+
+[gcode_macro LOAD_FROM_SPOOL]
+description: Lade Filament vom Spoolman-Eintrag mit ID und CFS-Slot
+variable_temp: 0
+gcode:
+  {% if params.ID is defined and params.SLOT is defined %}
+    {% set id = params.ID|int %}
+    {% set slot = params.SLOT|int %}
+    SET_ACTIVE_SPOOL ID={id}
+    {action_respond_info("🎯 Lade Spool ID %d aus Slot %d ..." % (id, slot))}
+
+    {action_call_remote_method(
+       "spoolman_get_spool_info",
+       spool_id=id
+    )}
+
+    {% set material = spoolman.spool.material|lower %}
+    {% set hotend_temp = spoolman.spool.print_temp|default(0)|int %}
+
+    {% if hotend_temp == 0 %}
+      {action_respond_info("⚠️ Keine gültige Temperatur in Spoolman-Eintrag")}
+      ABORT
+    {% endif %}
+
+    SET_GCODE_VARIABLE MACRO=custom_macro VARIABLE=default_extruder_temp VALUE={hotend_temp}
+    T{slot}
+    LOAD_MATERIAL
+  {% else %}
+    {action_respond_info("⚠️ Syntax: LOAD_FROM_SPOOL ID=<spool_id> SLOT=<0-3>")}
+  {% endif %}
+
+[gcode_macro LOAD_TPU_MANUAL]
+description: "Lade TPU manuell in die Box – ohne CFS-Zuführung"
+gcode:
+    M117 Lade TPU manuell...
+    M109 S220 ; TPU-typische Temperatur
+    M83 ; relative Extrusion
+    G91 ; relative Positionierung
+
+    ; Optional: etwas rückziehen, falls Düse voll ist
+    G1 E-2 F60
+
+    ; Langsames Einziehen in die Box
+    G1 E30 F90
+    G1 E30 F60
+    G1 E20 F30
+
+    G90 ; zurück zu absoluten Koordinaten
+    M117 TPU geladen
+
+[gcode_macro UNLOAD_TPU_MANUAL]
+description: "Ziehe TPU manuell aus dem Extruder – ohne CFS"
+gcode:
+    M117 Entlade TPU manuell...
+    M109 S220
+    M83
+    G91
+
+    ; Langsamer Rückzug
+    G1 E-20 F30
+    G1 E-30 F60
+    G1 E-10 F90
+
+    G90
+    M117 TPU entladen
+
+[gcode_macro LOAD_FROM_EXTERNAL_SPOOL]
+description: Lade Filament von externer Spule (ohne CFS)
+gcode:
+  {% if params.ID is defined %}
+    {% set id = params.ID|int %}
+    SET_ACTIVE_SPOOL ID={id}
+    {action_respond_info("🎯 Lade externe Spule ID %d ..." % id)}
+
+    {action_call_remote_method(
+       "spoolman_get_spool_info",
+       spool_id=id
+    )}
+
+    {% set hotend_temp = spoolman.spool.print_temp|default(0)|int %}
+
+    {% if hotend_temp == 0 %}
+      {action_respond_info("⚠️ Keine gültige Temperatur in Spoolman-Eintrag")}
+      ABORT
+    {% endif %}
+
+    SET_GCODE_VARIABLE MACRO=custom_macro VARIABLE=default_extruder_temp VALUE={hotend_temp}
+    LOAD_MATERIAL
+  {% else %}
+    {action_respond_info("⚠️ Syntax: LOAD_FROM_EXTERNAL_SPOOL ID=<spool_id>")}
+  {% endif %}
+
+[gcode_macro UNLOAD_FROM_CFS]
+description: Entlade Filament korrekt über das CFS-System
+gcode:
+  M117 Entlade Filament über CFS...
+  BOX_QUIT_MATERIAL
+  
+  
+
+[gcode_macro QUIT_MATERIAL]
+variable_enabled: 0
+gcode:
+  SAVE_GCODE_STATE NAME=myMoveState
+  RESTORE_E_CURRENT
+  M109 S{printer.custom_macro.default_extruder_temp}
+  M83
+  {action_respond_info("[QUIT_MATERIAL] ➤ Entladevorgang gestartet")}
+  G1 E100 F300
+  G1 E-15 F3000
+  G1 E-22.4700 F2400
+  G1 E-6.4200 F1200
+  G1 E-3.2100 F720
+  G1 E5.0000 F356
+  G1 E-5.0000 F384
+  G1 E5.0000 F412
+  G1 E-5.0000 F440
+  G1 E5.0000 F467
+  G1 E-5.0000 F495
+  G1 E5.0000 F523
+  G1 E-5.0000 F3000
+  G1 E-15 F3000
+  SET_E_MIN_CURRENT
+  RESTORE_GCODE_STATE NAME=myMoveState
+
+
+[gcode_macro END_PRINT]
+gcode:
+  {% if printer['gcode_macro custom_macro'].unload_on_end|default(1)|int == 1 %}
+    {action_respond_info("[END_PRINT] ➤ QUIT_MATERIAL wird aufgerufen")}
+    QUIT_MATERIAL
+  {% else %}
+    {action_respond_info("[END_PRINT] ➤ QUIT_MATERIAL deaktiviert – Filament bleibt geladen")}
+  {% endif %}
+  END_PRINT_NO_M84
+  M84
+
+[gcode_macro END_PRINT_NO_M84]
+gcode:
+  {% if printer['gcode_macro custom_macro'].unload_on_end|default(1)|int == 1 %}
+    {action_respond_info("🔁 BOX_END_PRINT wird ausgeführt")}
+    BOX_END
+    BOX_END_PRINT
+  {% else %}
+    {action_respond_info("⏭️ BOX_END_PRINT übersprungen – Filament bleibt geladen")}
+  {% endif %}
+
+  Qmode_exit
+  EXCLUDE_OBJECT_RESET
+  PRINT_PREPARE_CLEAR
+  M220 S100
+  SET_VELOCITY_LIMIT ACCEL=5000 ACCEL_TO_DECEL=2500
+  TURN_OFF_HEATERS
+  M107 P1
+  M107 P2
+  END_PRINT_POINT
+  WAIT_TEMP_START
+  BOX_GET_FIVE_WAY_STATE
